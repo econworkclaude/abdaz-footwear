@@ -1,14 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
-import { ScrollView, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { Notice, TopBar, s as ui } from '@/components/ui';
-import { settings, sizeGuide } from '@/data/demo';
+import { settings as demoSettings, sizeGuide } from '@/data/demo';
+import { useCatalog } from '@/hooks/queries';
 import { colors, space } from '@/theme';
 
 const topics = ['Order Issue', 'Delivery Issue', 'Exchange Help', 'Payment Issue', 'General Enquiry'];
 
 export default function Support() {
   const { topic } = useLocalSearchParams<{ topic?: string }>();
+  const settings = useCatalog().catalog?.settings ?? demoSettings;
+  const open = (t: string) => {
+    if (!settings.whatsappNumber) return;
+    Linking.openURL(`https://wa.me/${settings.whatsappNumber}?text=${encodeURIComponent(`Hi ABDAZ FOOTWEAR, I need help: ${t}.`)}`).catch(() => {});
+  };
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <TopBar title={topic === 'size' ? 'Size & Fit Help' : topic === 'policies' ? 'Policies' : 'Help & Support'} />
@@ -31,12 +37,18 @@ export default function Support() {
           <>
             {!settings.whatsappNumber && <Notice tone="info" title="WhatsApp and phone support not set up yet" text="The shop's verified business number will be added in the admin settings." />}
             {topics.map((t) => (
-              <View key={t} style={[ui.card, { flexDirection: 'row', alignItems: 'center', gap: 12, opacity: settings.whatsappNumber ? 1 : 0.6 }]}>
+              <Pressable key={t} onPress={() => open(t)} disabled={!settings.whatsappNumber} style={[ui.card, { flexDirection: 'row', alignItems: 'center', gap: 12, opacity: settings.whatsappNumber ? 1 : 0.6 }]}>
                 <Ionicons name="logo-whatsapp" size={22} color={colors.success} />
                 <Text style={{ color: colors.text, fontWeight: '700', flex: 1 }}>{t}</Text>
                 <Ionicons name="chevron-forward" size={18} color={colors.textDim} />
-              </View>
+              </Pressable>
             ))}
+            {!!settings.supportPhone && (
+              <View style={[ui.card, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+                <Ionicons name="call" size={22} color={colors.gold} />
+                <Text selectable style={{ color: colors.text, fontWeight: '700', flex: 1 }}>Call us: {settings.supportPhone}</Text>
+              </View>
+            )}
           </>
         )}
       </ScrollView>

@@ -4,23 +4,39 @@ import { useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DemoBanner, GoldButton, Notice, OutlineButton, Row, TopBar, s as ui } from '@/components/ui';
-import { settings, zones } from '@/data/demo';
+import { toast } from '@/components/Toast';
+import { invalidateOrders, queryClient, useAddresses, useCatalog } from '@/hooks/queries';
+import type { Order } from '@/types';
+
+const queryClientSet = (o: Order) => queryClient.setQueryData(['order', o.id], o);
+import { api } from '@/services/api';
 import { findZoneForAddress, priceCart } from '@/services/rules';
-import { getVariantsById, productsById, useShop } from '@/stores/shop';
+import { useSession } from '@/stores/session';
+import { useShop } from '@/stores/shop';
 import { colors, formatINR, radius, space } from '@/theme';
 import type { PaymentMethod } from '@/types';
 
 export default function Checkout() {
   const insets = useSafeAreaInsets();
-  const { cart, sold, phone, placeOrder } = useShop();
-  const address = useShop((s) => s.addresses.find((a) => a.id === s.selectedAddressId));
+  const { cart, clearCart } = useShop();
+  const signedIn = useSession((s) => !!s.session);
+  const phone = signedIn;
+  const { catalog, variantsById, productsById } = useCatalog();
+  const selectedId = useShop((s) => s.selectedAddressId);
+  const { data: addresses } = useAddresses();
+  const address = addresses?.find((a) => a.id === selectedId) ?? addresses?.find((a) => a.isDefault);
+  const settings = catalog?.settings;
+  const zones = catalog?.zones ?? [];
   const [method, setMethod] = useState<PaymentMethod>('cod');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const key = useRef(`ck-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   const zone = address ? findZoneForAddress(zones, address.area, address.pincode) : null;
-  const { lines, quote, problems } = useMemo(() => priceCart(cart, getVariantsById(sold), productsById, zone?.serviceable ? zone.zone : undefined), [cart, sold, zone?.serviceable, zone?.zone]);
+  const { lines, quote, problems } = useMemo(
+    () => priceCart(cart, variantsById, productsById, zone?.serviceable ? zone.zone : undefined),
+    [cart, variantsById, productsById, zone?.serviceable, zone?.zone],
+  );
 
   const blocker = !phone
     ? 'Sign in to place your order'
@@ -28,17 +44,27 @@ export default function Checkout() {
       ? 'Add a delivery address'
       : !zone?.serviceable
         ? 'This address is outside our delivery area'
-        : problems[0] ?? (method === 'upi' ? 'UPI is not set up yet' : '');
+        : problems[0] ?? (method === 'upi' ? 'UPI is not set up yet' : settings?.codEnabled === false ? 'Cash on Delivery is paused right now' : '');
   const step = !address || !zone?.serviceable ? -1 : blocker ? 0 : 1;
 
   const submit = async () => {
     if (busy) return;
     setBusy(true);
     setError('');
-    const r = await placeOrder({ paymentMethod: method, idempotencyKey: key.current });
-    setBusy(false);
-    if (!r.ok) return setError(r.error);
-    router.replace(`/order-success/${r.order.id}`);
+    try {
+      const order = await api.placeOrder({ items: cart, addressId: address!.id, paymentMethod: method, idempotencyKey: key.current });
+      queryClientSet(order);
+      router.replace(`/order-success/${order.id}`);
+      clearCart();
+      void invalidateOrders();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not place the order. Please try again.';
+      setError(msg);
+      toast(msg, 'error');
+      void invalidateOrders(); // stock may have changed
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (!cart.length && !busy) {
@@ -120,7 +146,7 @@ export default function Checkout() {
 
         <View style={{ gap: 8 }}>
           <Text style={ui.section}>Payment Method</Text>
-          <PayOption icon="cash-outline" title="Cash on Delivery (COD)" sub={`Pay when your order arrives · up to ${formatINR(settings.codMaxOrder)}`} active={method === 'cod'} onPress={() => setMethod('cod')} />
+          <PayOption icon="cash-outline" title="Cash on Delivery (COD)" sub={settings?.codEnabled === false ? 'Paused by the store right now' : `Pay when your order arrives · up to ${formatINR(settings?.codMaxOrder ?? 5000)}`} active={method === 'cod'} onPress={() => setMethod('cod')} />
           <PayOption icon="phone-portrait-outline" title="UPI (GPay, PhonePe, Paytm)" sub="Not available yet · payment gateway not set up" active={method === 'upi'} disabled onPress={() => {}} />
           <PayOption icon="card-outline" title="Cards" sub="Coming later" disabled active={false} onPress={() => {}} />
         </View>
@@ -134,7 +160,7 @@ export default function Checkout() {
           <Row label="Total Payable" value={formatINR(quote.total)} bold />
         </View>
         <Text style={{ color: colors.textDim, fontSize: 12 }}>
-          Exchange: size exchange within {settings.exchangeWindowDays} days of delivery, subject to stock. Final policy to be confirmed before launch.
+          Exchange: size exchange within {settings?.exchangeWindowDays ?? 7} days of delivery, subject to stock. Final policy to be confirmed before launch.
         </Text>
       </ScrollView>
 

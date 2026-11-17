@@ -25,6 +25,8 @@ export interface Variant {
 
 export interface Product {
   id: string;
+  isActive?: boolean;
+  purchaseCost?: number;
   name: string;
   sku: string;
   categorySlug: CategorySlug;
@@ -108,17 +110,19 @@ export interface Order {
   items: OrderItem[];
   address: Address;
   subtotal: number;
+  mrpTotal?: number;
   discount: number;
   deliveryFee: number;
   taxAmount: number;
   total: number;
   paymentMethod: PaymentMethod;
-  paymentStatus: 'pending' | 'paid' | 'failed';
+  paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
   status: OrderStatus;
   history: StatusEvent[];
   etaMinutes: number;
   createdAt: string;
-  isDemo: true;
+  userId?: string;
+  customerPhone?: string | null;
 }
 
 export interface Quote {
@@ -129,4 +133,40 @@ export interface Quote {
   taxAmount: number;
   total: number;
   itemCount: number;
+}
+
+export interface Settings {
+  codEnabled: boolean;
+  codMaxOrder: number;
+  upiConfigured: boolean;
+  whatsappNumber: string;
+  supportPhone: string;
+  exchangeWindowDays: number;
+}
+
+export interface Catalog {
+  categories: Category[];
+  products: Product[];
+  variants: Variant[];
+  zones: DeliveryZone[];
+  settings: Settings;
+}
+
+export interface Session {
+  userId: string;
+  phone: string | null;
+  email: string | null;
+  name: string;
+  role: 'customer' | 'admin' | 'rider';
+}
+
+export interface Dashboard {
+  todayOrders: number;
+  todaySales: number;
+  pending: number;
+  outForDelivery: number;
+  completed: number;
+  cancelled: number;
+  revenue: number;
+  lowStock: number;
 }

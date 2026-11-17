@@ -5,19 +5,22 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ShoeArt } from '@/components/Art';
 import { EmptyState, GoldButton, OutlineButton, TopBar, s as ui } from '@/components/ui';
-import { zones } from '@/data/demo';
+import { useAddresses, useCatalog } from '@/hooks/queries';
 import { findZoneForAddress, priceCart } from '@/services/rules';
-import { getVariantsById, productsById, useShop } from '@/stores/shop';
+import { useShop } from '@/stores/shop';
 import { colors, formatINR, radius, space } from '@/theme';
 
 export default function Cart() {
   const insets = useSafeAreaInsets();
-  const { cart, sold, setQty, removeFromCart } = useShop();
-  const address = useShop((s) => s.addresses.find((a) => a.id === s.selectedAddressId));
-  const zone = address ? findZoneForAddress(zones, address.area, address.pincode) : null;
+  const { cart, setQty, removeFromCart } = useShop();
+  const { catalog, variantsById, productsById } = useCatalog();
+  const selectedId = useShop((s) => s.selectedAddressId);
+  const { data: addresses } = useAddresses();
+  const address = addresses?.find((a) => a.id === selectedId) ?? addresses?.find((a) => a.isDefault);
+  const zone = address && catalog ? findZoneForAddress(catalog.zones, address.area, address.pincode) : null;
   const { lines, quote, problems } = useMemo(
-    () => priceCart(cart, getVariantsById(sold), productsById, zone?.serviceable ? zone.zone : undefined),
-    [cart, sold, zone?.serviceable, zone?.zone],
+    () => priceCart(cart, variantsById, productsById, zone?.serviceable ? zone.zone : undefined),
+    [cart, variantsById, productsById, zone?.serviceable, zone?.zone],
   );
   const count = cart.reduce((n, c) => n + c.quantity, 0);
 
@@ -51,11 +54,11 @@ export default function Cart() {
                   <Ionicons name="trash-outline" size={18} color="#666" />
                 </Pressable>
                 <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#D6D0C4', borderRadius: radius.pill }}>
-                  <Pressable onPress={() => (item.quantity > 1 ? setQty(item.variantId, item.quantity - 1) : removeFromCart(item.variantId))} style={{ padding: 8 }} accessibilityLabel="Decrease quantity">
+                  <Pressable onPress={() => (item.quantity > 1 ? setQty(item.variantId, item.quantity - 1, variant.stock) : removeFromCart(item.variantId))} style={{ padding: 8 }} accessibilityLabel="Decrease quantity">
                     <Ionicons name="remove" size={16} color="#111" />
                   </Pressable>
                   <Text style={{ color: '#111', fontWeight: '800', minWidth: 18, textAlign: 'center' }}>{item.quantity}</Text>
-                  <Pressable onPress={() => setQty(item.variantId, item.quantity + 1)} disabled={item.quantity >= variant.stock} style={{ padding: 8, opacity: item.quantity >= variant.stock ? 0.3 : 1 }} accessibilityLabel="Increase quantity">
+                  <Pressable onPress={() => setQty(item.variantId, item.quantity + 1, variant.stock)} disabled={item.quantity >= variant.stock} style={{ padding: 8, opacity: item.quantity >= variant.stock ? 0.3 : 1 }} accessibilityLabel="Increase quantity">
                     <Ionicons name="add" size={16} color="#111" />
                   </Pressable>
                 </View>

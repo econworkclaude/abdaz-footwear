@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { FlatList, View, useWindowDimensions } from 'react-native';
 import { ProductCard } from '@/components/ProductCard';
 import { EmptyState, GoldButton, TopBar } from '@/components/ui';
-import { products } from '@/data/demo';
+import { useCatalog } from '@/hooks/queries';
 import { useShop } from '@/stores/shop';
 import { colors, space } from '@/theme';
 
@@ -10,7 +10,8 @@ export default function Wishlist() {
   const ids = useShop((s) => s.wishlist);
   const { width } = useWindowDimensions();
   const colW = (Math.min(width, 520) - space.lg * 2 - 12) / 2;
-  const list = products.filter((p) => ids.includes(p.id));
+  const { activeProducts } = useCatalog();
+  const list = activeProducts.filter((p) => ids.includes(p.id));
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <TopBar title="Saved Items" />

@@ -2,7 +2,7 @@
  * DEMO DATA ONLY. Illustrative products, prices and stock for testing the app.
  * Not confirmed retail pricing. Replace with Supabase data in production mode.
  */
-import type { Category, Colourway, DeliveryZone, Product, Variant } from '@/types';
+import type { Category, Colourway, DeliveryZone, Product, Settings, Variant } from '@/types';
 
 export const categories: Category[] = [
   { slug: 'sneakers', name: 'Sneakers', isActive: true },
@@ -115,16 +115,18 @@ export const zones: DeliveryZone[] = [
   { id: 'zone-c', name: 'Zone C', isActive: false, deliveryFee: 100, etaMinutes: 150, minimumOrder: 0, areas: ['Medavakkam', 'Pallikaranai', 'Sholinganallur'], pincodes: ['600100', '600119'] },
 ];
 
-export const settings = {
-  isDemo: true,
-  storeArea: 'Hasthinapuram, Chennai',
+export const STORE_AREA = 'Hasthinapuram, Chennai';
+
+export const settings: Settings = {
   codEnabled: true,
   codMaxOrder: 5000,
   upiConfigured: false,
   whatsappNumber: '', // set by admin; left empty until a verified business number is provided
+  supportPhone: '',
   exchangeWindowDays: 7,
-  taxIncludedInPrice: true,
 };
+
+export const COLOUR_PRESETS: Colourway[] = [BW, GW, AB, WG, NB, GR, TN, BL];
 
 export const sizeGuide = [
   { uk: 6, cm: 24.5 },

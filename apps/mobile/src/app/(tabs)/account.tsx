@@ -2,15 +2,33 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GoldButton, s as ui } from '@/components/ui';
+import { toast } from '@/components/Toast';
+import { Field, GoldButton, s as ui } from '@/components/ui';
+import { IS_LIVE } from '@/config';
+import { queryClient } from '@/hooks/queries';
+import { demo } from '@/services/demoDb';
+import { useSession } from '@/stores/session';
 import { useShop } from '@/stores/shop';
+import { useState } from 'react';
 import { colors, radius, space } from '@/theme';
 
 type Item = { icon: keyof typeof Ionicons.glyphMap; title: string; sub: string; go: () => void };
 
 export default function Account() {
   const insets = useSafeAreaInsets();
-  const { phone, name, signOut, resetDemo } = useShop();
+  const session = useSession((s) => s.session);
+  const { signOut, setName } = useSession();
+  const phone = session?.phone ?? session?.email;
+  const name = session?.name;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const resetDemo = () => {
+    demo.reset();
+    useShop.setState({ cart: [], wishlist: [], selectedAddressId: null });
+    void signOut();
+    void queryClient.invalidateQueries();
+    toast('Demo data reset', 'info');
+  };
 
   const items: Item[] = [
     { icon: 'cube-outline', title: 'My Orders', sub: 'Track, return or exchange', go: () => router.push('/(tabs)/orders') },
@@ -31,9 +49,30 @@ export default function Account() {
             <Text style={{ color: colors.textOnGold, fontWeight: '800', fontSize: 20 }}>{(name || 'A')[0].toUpperCase()}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 17 }}>{name || 'ABDAZ Customer'}</Text>
-            <Text style={{ color: colors.textDim }}>{phone}</Text>
+            {editing ? (
+              <Field label="Your name" value={draft} onChangeText={setDraft} autoFocus onSubmitEditing={() => { void setName(draft.trim()).then(() => toast('Profile updated')); setEditing(false); }} />
+            ) : (
+              <>
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 17 }}>{name || 'ABDAZ Customer'}</Text>
+                <Text style={{ color: colors.textDim }}>{phone}</Text>
+              </>
+            )}
           </View>
+          <Pressable
+            onPress={() => {
+              if (editing) {
+                void setName(draft.trim()).then(() => toast('Profile updated'));
+                setEditing(false);
+              } else {
+                setDraft(name ?? '');
+                setEditing(true);
+              }
+            }}
+            hitSlop={8}
+            accessibilityLabel="Edit profile"
+          >
+            <Ionicons name={editing ? 'checkmark-circle' : 'create-outline'} size={22} color={colors.gold} />
+          </Pressable>
         </View>
       ) : (
         <View style={[ui.card, { gap: 10 }]}>
@@ -55,17 +94,19 @@ export default function Account() {
           </Pressable>
         ))}
         {phone && (
-          <Pressable onPress={signOut} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderTopWidth: 1, borderColor: '#E7E1D6' }}>
+          <Pressable onPress={() => { void signOut().then(() => { void queryClient.invalidateQueries(); toast('Logged out', 'info'); }); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderTopWidth: 1, borderColor: '#E7E1D6' }}>
             <Ionicons name="log-out-outline" size={22} color={colors.danger} />
             <Text style={{ color: colors.danger, fontWeight: '700' }}>Log Out</Text>
           </Pressable>
         )}
       </View>
 
-      <Pressable onPress={resetDemo} style={{ alignSelf: 'center', padding: 8 }}>
-        <Text style={{ color: colors.textDim, fontSize: 12 }}>Reset demo data</Text>
-      </Pressable>
-      <Text style={{ color: colors.textDim, fontSize: 11, textAlign: 'center' }}>ABDAZ FOOTWEAR · v0.1.0 demo build</Text>
+      {!IS_LIVE && (
+        <Pressable onPress={resetDemo} style={{ alignSelf: 'center', padding: 8 }}>
+          <Text style={{ color: colors.textDim, fontSize: 12 }}>Reset demo data</Text>
+        </Pressable>
+      )}
+      <Text style={{ color: colors.textDim, fontSize: 11, textAlign: 'center' }}>ABDAZ FOOTWEAR · v0.2.0 {IS_LIVE ? '' : 'demo build'}</Text>
     </ScrollView>
   );
 }

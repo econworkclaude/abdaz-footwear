@@ -1,43 +1,63 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { useState } from 'react';
+import { Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ShoeArt } from '@/components/Art';
-import { Chip, EmptyState, GoldButton, IconBtn, Notice, OutlineButton, Price, s as ui } from '@/components/ui';
-import { SIZES, settings, sizeGuide, zones } from '@/data/demo';
+import { toast } from '@/components/Toast';
+import { EmptyState, GoldButton, IconBtn, Notice, OutlineButton, Price, Skeleton, s as ui } from '@/components/ui';
+import { SIZES, sizeGuide } from '@/data/demo';
+import { useAddresses, useCatalog } from '@/hooks/queries';
 import { findZoneForAddress } from '@/services/rules';
-import { getVariantsById, productsById, useShop } from '@/stores/shop';
+import { useShop } from '@/stores/shop';
 import { colors, radius, space } from '@/theme';
 
 export default function ProductDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { catalog, productsById, variantsById: vmap, isLoading } = useCatalog();
   const product = productsById.get(id);
   const insets = useSafeAreaInsets();
-  const sold = useShop((s) => s.sold);
   const liked = useShop((s) => s.wishlist.includes(id));
   const toggleWish = useShop((s) => s.toggleWishlist);
   const addToCart = useShop((s) => s.addToCart);
   const cartCount = useShop((s) => s.cart.reduce((n, c) => n + c.quantity, 0));
-  const address = useShop((s) => s.addresses.find((a) => a.id === s.selectedAddressId));
-  const [colourId, setColourId] = useState(product?.colours[0].id ?? '');
+  const selectedId = useShop((s) => s.selectedAddressId);
+  const { data: addresses } = useAddresses();
+  const address = addresses?.find((a) => a.id === selectedId) ?? addresses?.find((a) => a.isDefault);
+  const [colourPick, setColourId] = useState('');
   const [size, setSize] = useState<number | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [guide, setGuide] = useState(false);
-  const vmap = useMemo(() => getVariantsById(sold), [sold]);
 
+  if (isLoading)
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, padding: space.lg, paddingTop: insets.top + 60, gap: 16 }}>
+        <Skeleton w="100%" h={260} r={24} />
+        <Skeleton w="70%" h={28} />
+        <Skeleton w="40%" h={28} />
+        <Skeleton w="100%" h={60} />
+      </View>
+    );
   if (!product) return <EmptyState icon="alert-circle" title="Product not found" action={<OutlineButton title="Go back" onPress={() => router.back()} />} />;
 
-  const colour = product.colours.find((c) => c.id === colourId)!;
+  const colourId = colourPick || product.colours[0]?.id;
+  const colour = product.colours.find((c) => c.id === colourId) ?? product.colours[0];
+  const settings = catalog!.settings;
+  const zones = catalog!.zones;
   const variantFor = (sz: number) => vmap.get(`${product.id}-${colourId}-${sz}`);
   const selected = size ? variantFor(size) : undefined;
   const zone = address ? findZoneForAddress(zones, address.area, address.pincode) : null;
 
   const add = (buyNow: boolean) => {
     if (!selected) return setMsg({ ok: false, text: 'Please select your UK size.' });
-    const r = addToCart(selected.id, 1);
-    setMsg({ ok: r.ok, text: r.message });
-    if (r.ok && buyNow) router.push('/cart');
+    const r = addToCart(selected.id, selected.stock, 1);
+    setMsg(r.ok ? null : { ok: false, text: r.message });
+    if (r.ok) {
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      if (buyNow) router.push('/cart');
+      else toast(`Added · ${colour.name}, UK ${selected.size}`);
+    }
   };
 
   return (

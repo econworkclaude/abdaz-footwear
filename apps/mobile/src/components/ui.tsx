@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps, type ViewStyle } from 'react-native';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, formatINR, goldGradient, radius, space } from '@/theme';
+import { IS_LIVE } from '@/config';
 import { ORDER_FLOW, statusLabel } from '@/stores/shop';
 import type { Order } from '@/types';
 
@@ -68,6 +69,7 @@ export function TopBar({ title, right, back = true }: { title: string; right?: R
 }
 
 export function DemoBanner({ text = 'DEMO MODE · sample products, no real payments or deliveries' }: { text?: string }) {
+  if (IS_LIVE) return null;
   return (
     <View style={s.demo} accessibilityRole="text">
       <Ionicons name="flask-outline" size={13} color={colors.goldLight} />
@@ -217,3 +219,24 @@ export const s = StyleSheet.create({
   lightCard: { backgroundColor: colors.cardLight, borderRadius: radius.lg, padding: space.md },
   section: { color: colors.text, fontSize: 18, fontWeight: '800' },
 });
+
+export function Skeleton({ w, h, r = 12, style }: { w: number | `${number}%`; h: number; r?: number; style?: ViewStyle }) {
+  const o = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    const a = Animated.loop(Animated.sequence([Animated.timing(o, { toValue: 1, duration: 700, useNativeDriver: true }), Animated.timing(o, { toValue: 0.4, duration: 700, useNativeDriver: true })]));
+    a.start();
+    return () => a.stop();
+  }, [o]);
+  return <Animated.View style={[{ width: w, height: h, borderRadius: r, backgroundColor: colors.card, opacity: o }, style]} />;
+}
+
+export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+  return (
+    <EmptyState
+      icon="cloud-offline-outline"
+      title="Couldn't load this"
+      text={error instanceof Error ? error.message : 'Check your internet connection and try again.'}
+      action={onRetry ? <OutlineButton title="Try again" icon="refresh" onPress={onRetry} /> : undefined}
+    />
+  );
+}

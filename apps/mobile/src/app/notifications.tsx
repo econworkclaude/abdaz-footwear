@@ -1,11 +1,12 @@
 import { ScrollView, Text, View } from 'react-native';
 import { EmptyState, TopBar, fmtDateTime, s as ui } from '@/components/ui';
-import { statusLabel, useShop } from '@/stores/shop';
+import { useMyOrders } from '@/hooks/queries';
+import { statusLabel } from '@/stores/shop';
 import { colors, space } from '@/theme';
 
 /** In-app notifications built from real order status events. Push notifications need a provider (not set up yet). */
 export default function Notifications() {
-  const orders = useShop((s) => s.orders);
+  const { data: orders = [] } = useMyOrders();
   const events = orders
     .flatMap((o) => o.history.map((h) => ({ key: o.id + h.status, title: `${statusLabel[h.status]} · #${o.orderNumber}`, at: h.at })))
     .sort((a, b) => b.at.localeCompare(a.at));

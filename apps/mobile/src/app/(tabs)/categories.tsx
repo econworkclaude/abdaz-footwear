@@ -1,13 +1,14 @@
 import type React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProductCard } from '@/components/ProductCard';
-import { Chip, EmptyState, s as ui } from '@/components/ui';
-import { categories, products, SIZES } from '@/data/demo';
-import { getVariantsById, useShop } from '@/stores/shop';
+import { Chip, EmptyState, ErrorState, Skeleton, s as ui } from '@/components/ui';
+import { SIZES } from '@/data/demo';
+import { useCatalog } from '@/hooks/queries';
+import { useShop } from '@/stores/shop';
 import { colors, radius, space } from '@/theme';
 import type { CategorySlug } from '@/types';
 import { norm } from '@/services/rules';
@@ -30,7 +31,9 @@ export default function Categories() {
   const params = useLocalSearchParams<{ cat?: CategorySlug; focus?: string }>();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const sold = useShop((s) => s.sold);
+  const { catalog, activeProducts: products, variantsById: vmap, isLoading, error, refetch } = useCatalog();
+  const categories = catalog?.categories ?? [];
+  const { recentSearches, addSearch, clearSearches } = useShop();
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<CategorySlug | 'all'>(params.cat ?? 'all');
   const [sort, setSort] = useState<Sort>('featured');
@@ -47,7 +50,6 @@ export default function Categories() {
     if (params.focus) setTimeout(() => input.current?.focus(), 300);
   }, [params.focus]);
 
-  const vmap = useMemo(() => getVariantsById(sold), [sold]);
   const stockFor = (pid: string, sz: number | null) => [...vmap.values()].some((v) => v.productId === pid && v.stock > 0 && (sz == null || v.size === sz));
 
   const list = useMemo(() => {
@@ -67,7 +69,7 @@ export default function Categories() {
     );
     return r;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, cat, sort, price, size, inStockOnly, vmap]);
+  }, [q, cat, sort, price, size, inStockOnly, vmap, products]);
 
   const colW = (Math.min(width, 520) - space.lg * 2 - 12) / 2;
   const activeFilters = Number(price !== 'all') + Number(!!size) + Number(inStockOnly);
@@ -87,6 +89,7 @@ export default function Categories() {
             style={{ flex: 1, color: colors.text, fontSize: 14, height: 46 }}
             accessibilityLabel="Search products"
             returnKeyType="search"
+            onSubmitEditing={() => addSearch(q)}
           />
           {!!q && (
             <Pressable onPress={() => setQ('')} accessibilityLabel="Clear search" hitSlop={8}>
@@ -98,6 +101,30 @@ export default function Categories() {
           <Ionicons name="options-outline" size={20} color={activeFilters ? colors.gold : colors.text} />
         </Pressable>
       </View>
+
+      {!q && recentSearches.length > 0 && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: space.lg, marginTop: 10, alignItems: 'center' }}>
+          <Ionicons name="time-outline" size={14} color={colors.textDim} />
+          {recentSearches.map((r) => (
+            <Pressable key={r} onPress={() => setQ(r)} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, backgroundColor: colors.bg2 }}>
+              <Text style={{ color: colors.textDim, fontSize: 12 }}>{r}</Text>
+            </Pressable>
+          ))}
+          <Pressable onPress={clearSearches} hitSlop={6}>
+            <Text style={{ color: colors.gold, fontSize: 12, fontWeight: '700' }}>Clear</Text>
+          </Pressable>
+        </View>
+      )}
+      {!!q && (
+        <View style={{ paddingHorizontal: space.lg, marginTop: 8, gap: 2 }}>
+          {list.slice(0, 3).map((p) => (
+            <Pressable key={p.id} onPress={() => { addSearch(q); router.push(`/product/${p.id}`); }} style={{ flexDirection: 'row', gap: 8, paddingVertical: 6, alignItems: 'center' }}>
+              <Ionicons name="search" size={14} color={colors.textDim} />
+              <Text style={{ color: colors.text }}>{p.name}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginTop: space.md }} contentContainerStyle={{ paddingHorizontal: space.lg, gap: 8 }}>
         <Chip label="All" active={cat === 'all'} onPress={() => setCat('all')} />
@@ -136,7 +163,18 @@ export default function Categories() {
         contentContainerStyle={{ padding: space.lg, gap: 12, paddingBottom: 40 }}
         ListHeaderComponent={<Text style={{ color: colors.textDim, fontSize: 12 }}>{list.length} styles</Text>}
         renderItem={({ item }) => <ProductCard product={item} width={colW} inStock={stockFor(item.id, null)} />}
-        ListEmptyComponent={<EmptyState icon="search" title="No matching footwear" text="Try a different search or clear some filters." />}
+        ListEmptyComponent={
+          error ? (
+            <ErrorState error={error} onRetry={() => void refetch()} />
+          ) : isLoading ? (
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <Skeleton w={colW} h={220} />
+              <Skeleton w={colW} h={220} />
+            </View>
+          ) : (
+            <EmptyState icon="search" title="No matching footwear" text="Try a different search or clear some filters." />
+          )
+        }
         keyboardShouldPersistTaps="handled"
       />
     </View>

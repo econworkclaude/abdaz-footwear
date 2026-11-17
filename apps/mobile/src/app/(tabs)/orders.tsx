@@ -4,8 +4,10 @@ import { useState } from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ShoeArt } from '@/components/Art';
-import { Chip, EmptyState, GoldButton, fmtDateTime, s as ui } from '@/components/ui';
-import { productsById, statusLabel, useShop } from '@/stores/shop';
+import { Chip, EmptyState, ErrorState, GoldButton, Skeleton, fmtDateTime, s as ui } from '@/components/ui';
+import { useCatalog, useMyOrders } from '@/hooks/queries';
+import { useSession } from '@/stores/session';
+import { statusLabel } from '@/stores/shop';
 import { colors, formatINR, radius, space } from '@/theme';
 import type { OrderStatus } from '@/types';
 
@@ -19,7 +21,9 @@ const TABS: { id: string; label: string; match: (s: OrderStatus) => boolean }[] 
 
 export default function Orders() {
   const insets = useSafeAreaInsets();
-  const orders = useShop((s) => s.orders);
+  const signedIn = useSession((s) => !!s.session);
+  const { data: orders = [], isLoading, error, refetch, isRefetching } = useMyOrders();
+  const { productsById } = useCatalog();
   const [tab, setTab] = useState('all');
   const list = orders.filter((o) => TABS.find((t) => t.id === tab)!.match(o.status));
 
@@ -35,15 +39,30 @@ export default function Orders() {
         data={list}
         keyExtractor={(o) => o.id}
         contentContainerStyle={{ padding: space.lg, gap: 12 }}
-        ListEmptyComponent={<EmptyState icon="cube-outline" title="No orders here yet" text="Orders you place will show up here." action={<GoldButton title="Shop Now" onPress={() => router.push('/(tabs)')} />} />}
+        onRefresh={() => void refetch()}
+        refreshing={isRefetching}
+        ListEmptyComponent={
+          !signedIn ? (
+            <EmptyState icon="person-circle-outline" title="Sign in to see your orders" action={<GoldButton title="Sign In" onPress={() => router.push('/login')} />} />
+          ) : isLoading ? (
+            <View style={{ gap: 12 }}>
+              <Skeleton w="100%" h={84} />
+              <Skeleton w="100%" h={84} />
+            </View>
+          ) : error ? (
+            <ErrorState error={error} onRetry={() => void refetch()} />
+          ) : (
+            <EmptyState icon="cube-outline" title="No orders here yet" text="Orders you place will show up here." action={<GoldButton title="Shop Now" onPress={() => router.push('/(tabs)')} />} />
+          )
+        }
         renderItem={({ item: o }) => {
-          const p = productsById.get(o.items[0].productId)!;
-          const colour = p.colours.find((c) => o.items[0].variantId.includes(`-${c.id}-`));
+          const p = productsById.get(o.items[0]?.productId);
+          const colour = p?.colours.find((c) => o.items[0].variantId.includes(`-${c.id}-`));
           const tone = o.status === 'delivered' ? colors.success : o.status === 'cancelled' ? colors.danger : colors.gold;
           return (
             <Pressable onPress={() => router.push(`/order/${o.id}`)} style={[ui.card, { flexDirection: 'row', gap: 12, alignItems: 'center', padding: 12 }]}>
               <View style={{ width: 72, height: 60, borderRadius: radius.md, backgroundColor: colors.cardLight, alignItems: 'center', justifyContent: 'center' }}>
-                <ShoeArt product={p} colour={colour} width={68} />
+                {p ? <ShoeArt product={p} colour={colour} width={68} /> : <Ionicons name="cube-outline" size={28} color="#777" />}
               </View>
               <View style={{ flex: 1, gap: 3 }}>
                 <Text style={{ color: colors.text, fontWeight: '800' }}>#{o.orderNumber}</Text>

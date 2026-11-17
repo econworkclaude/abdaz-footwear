@@ -4,12 +4,13 @@ import { useEffect, useRef } from 'react';
 import { Animated, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GoldButton, OutlineButton, Row, s as ui } from '@/components/ui';
-import { useShop } from '@/stores/shop';
+import { useOrder } from '@/hooks/queries';
+import { IS_LIVE } from '@/config';
 import { colors, formatINR, space } from '@/theme';
 
 export default function OrderSuccess() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const order = useShop((s) => s.orders.find((o) => o.id === id));
+  const { data: order } = useOrder(id);
   const insets = useSafeAreaInsets();
   const scale = useRef(new Animated.Value(0.3)).current;
   useEffect(() => {
@@ -25,7 +26,9 @@ export default function OrderSuccess() {
         <Ionicons name="checkmark" size={64} color={colors.textOnGold} />
       </Animated.View>
       <Text style={{ color: colors.text, fontSize: 26, fontWeight: '800', textAlign: 'center' }}>Order Placed Successfully!</Text>
-      <Text style={{ color: colors.textDim, textAlign: 'center' }}>Demo order · saved on this phone. No real delivery will happen.</Text>
+      <Text style={{ color: colors.textDim, textAlign: 'center' }}>
+        {IS_LIVE ? 'We will confirm your order shortly. You can track every step here.' : 'Demo order · saved on this phone. No real delivery will happen.'}
+      </Text>
       <View style={[ui.card, { gap: 2 }]}>
         <Row label="Order ID" value={'#' + order.orderNumber} bold />
         <Row label="Amount payable" value={formatINR(order.total)} />

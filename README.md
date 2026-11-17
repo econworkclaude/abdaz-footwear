@@ -1,34 +1,51 @@
 # ABDAZ Footwear
 
-Customer app for ABDAZ FOOTWEAR (Hasthinapuram, Chennai). **Step Into Style.**
+Two Android apps from one codebase for ABDAZ FOOTWEAR (Hasthinapuram, Chennai). **Step Into Style.**
 
-Status: **v0.1 demo build.** The customer app runs fully on-device with sample data. Nothing is sent to a server, no SMS is sent, and no payment is taken.
+| App | Package | Who uses it |
+| --- | --- | --- |
+| **ABDAZ** | `com.abdaz.footwear` | Customers: browse, size, bag, address check, Cash on Delivery, tracking |
+| **ABDAZ Admin** | `com.abdaz.footwear.admin` | Store staff: dashboard, orders workflow, stock, products, delivery zones, settings |
 
-## What works in this build
+Both apps run in **live mode** when Supabase keys are present and in clearly labelled **demo mode** (on-device sample data, no server) when they are not.
 
-- Splash, 3-slide onboarding (remembered), guest browsing
-- Phone + OTP sign-in in clearly labelled development mode (code `123456`, no SMS sent)
-- Home: location header, search, promo banner, features row, categories, Trending / New Arrivals / Featured rails
-- Catalogue: category chips, search, sort, price / UK size / in-stock filters, empty state
-- Product: colour variants, UK 6 to 10 sizes driven by per-colour-per-size stock (sold-out sizes disabled), size guide, wishlist, Add to Bag / Buy Now
-- Bag: quantity limits by stock, remove, totals, persisted between sessions
-- Address: add / edit / delete / default, serviceability check against Zone A (Hasthinapuram, Chromepet, Chitlapakkam, Tambaram Sanatorium); Zone B/C areas are refused
-- Checkout: sign-in, address, zone and stock checks, recalculated totals, COD only (UPI shown as not set up), duplicate-submit protection
-- Order success (order IDs `AB000001`…), order tracking timeline with real timestamps and a labelled DEMO "next status" button, cancel while Placed/Confirmed (restocks), My Orders tabs, Account, Saved Items, Notifications, Support
+## Get the APKs
 
-## Not built yet (next phases)
+Every push to `main` runs `.github/workflows/android-apk.yml`, which checks types, runs tests and builds both APKs. Open the repository's **Releases → latest-apk** on your phone and tap `ABDAZ-….apk` or `ABDAZ-Admin-….apk` (allow "Install unknown apps" when asked). These are test builds signed with a debug key; a Play Store release needs a private signing key.
 
-Supabase schema + RLS + server checkout, real OTP (Supabase Auth + SMS provider), UPI gateway, Next.js admin dashboard, returns/exchanges flow, coupons, push notifications, maps. Product images are original vector illustrations until real photos are uploaded.
+## Connect the real database (Supabase)
 
-## Run it
+1. Create a project at supabase.com (region: Mumbai).
+2. **SQL Editor** → run `supabase/migrations/20261118000001_init.sql`, then `supabase/seed.sql` (demo catalogue, clearly flagged `is_demo`).
+3. **Authentication → Providers**
+   - Email: enable. In **Email Templates → Magic Link**, include `{{ .Token }}` so customers receive a 6-digit code.
+   - Phone (optional): needs an SMS provider (Twilio, MessageBird, Vonage or Textlocal) for real SMS OTP.
+4. **Create the admin login**: Authentication → Users → *Add user* (email + password). Then in SQL Editor:
+   ```sql
+   update public.profiles set role = 'admin', full_name = 'Store Admin' where email = 'you@example.com';
+   ```
+5. In GitHub → Settings → Secrets and variables → Actions, add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` (Project Settings → API). Never add the `service_role` key anywhere in the apps.
+6. Push or re-run the workflow. The new APKs are named `…-live.apk`.
+
+## How the data is protected
+
+- Customers can only read their own addresses, orders and notifications (row-level security).
+- Orders are created only by the `place_order` database function: it checks sign-in, address ownership, active delivery zone and pincode, locks each size row, refuses overselling, recomputes prices from the database and is idempotent (a double tap creates one order).
+- Status changes go through `admin_set_order_status` (admins only, valid steps only, restocks on cancel/return, writes audit log and a customer notification).
+- Customers cannot change roles, prices or stock. Tested in `supabase/tests/checkout_test.sql`.
+
+## Develop
 
 ```bash
 cd apps/mobile
 npm install
-npx expo start          # scan the QR with Expo Go on Android (same Wi-Fi)
+npx expo start                     # customer app (scan QR with Expo Go)
+APP_VARIANT=admin npx expo start   # admin app
 npm run typecheck && npm test
 ```
 
-## Android APK
+Database tests (plain Postgres 16): load `supabase/tests/shim.sql`, the migration, `seed.sql`, then run `supabase/tests/checkout_test.sql`.
 
-`.github/workflows/android-apk.yml` builds an installable APK on every push to `main`. Open the repository's **Actions** tab, pick the latest "Android APK" run, download `abdaz-demo-apk`, unzip, and open the `.apk` on the phone (allow "Install unknown apps" when asked). This is a test build signed with a debug key; a Play Store build needs a proper signing key (EAS or a keystore).
+## Not built yet
+
+UPI gateway (needs a Razorpay/Cashfree account), product photo upload (Supabase Storage), returns/exchange request screens, coupons, push notifications, rider app and live map. Privacy policy and terms are placeholders that need the owner's legal review.

@@ -1,11 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
-import { Chip, Field, GoldButton, Notice, OutlineButton, TopBar, s as ui } from '@/components/ui';
-import { zones } from '@/data/demo';
+import { toast } from '@/components/Toast';
+import { Chip, EmptyState, Field, GoldButton, Notice, OutlineButton, Skeleton, TopBar, s as ui } from '@/components/ui';
+import { useAddresses, useCatalog, useSaveAddress } from '@/hooks/queries';
+import { api } from '@/services/api';
 import { findZoneForAddress, validateAddress } from '@/services/rules';
+import { useSession } from '@/stores/session';
 import { useShop } from '@/stores/shop';
+import { useQueryClient } from '@tanstack/react-query';
 import { colors, space } from '@/theme';
 import type { Address, AddressType } from '@/types';
 
@@ -18,23 +22,66 @@ const blank = (phone?: string | null): Address => ({
 /** Saved addresses list, plus add/edit form. Location permission is optional; manual entry always works. */
 export default function AddressScreen() {
   const { mode } = useLocalSearchParams<{ mode?: 'select' }>();
-  const { addresses, selectedAddressId, selectAddress, saveAddress, deleteAddress, phone } = useShop();
-  const [editing, setEditing] = useState<Address | null>(addresses.length ? null : blank(phone));
+  const session = useSession((s) => s.session);
+  const phone = session?.phone ?? null;
+  const { selectedAddressId, selectAddress } = useShop();
+  const { data: addresses = [], isLoading } = useAddresses();
+  const { catalog } = useCatalog();
+  const zones = catalog?.zones ?? [];
+  const save = useSaveAddress();
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState<Address | null>(null);
+  const [touched, setTouched] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof Address, string>>>({});
   const [zoneMsg, setZoneMsg] = useState('');
+  useEffect(() => {
+    if (session && !isLoading && !touched && addresses.length === 0) {
+      setTouched(true);
+      setEditing(blank(phone));
+    }
+  }, [session, isLoading, touched, addresses.length, phone]);
+  const deleteAddress = async (id: string) => {
+    await api.deleteAddress(id).catch((e) => toast(e.message, 'error'));
+    if (selectedAddressId === id) selectAddress(null);
+    void qc.invalidateQueries({ queryKey: ['addresses'] });
+  };
+
+  if (!session)
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <TopBar title="Delivery Address" />
+        <EmptyState icon="location-outline" title="Sign in to save addresses" text="Your addresses are saved to your account." action={<GoldButton title="Sign In" onPress={() => router.push('/login')} />} />
+      </View>
+    );
+  if (isLoading)
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <TopBar title="Delivery Address" />
+        <View style={{ padding: space.lg, gap: 12 }}>
+          <Skeleton w="100%" h={110} />
+          <Skeleton w="100%" h={110} />
+        </View>
+      </View>
+    );
 
   if (editing) {
     const set = (k: keyof Address, v: string | boolean) => setEditing({ ...editing, [k]: v });
     const check = findZoneForAddress(zones, editing.area, editing.pincode);
-    const save = () => {
+    const submit = async () => {
       const e = validateAddress(editing);
       setErrors(e);
       if (Object.keys(e).length) return;
       const z = findZoneForAddress(zones, editing.area, editing.pincode);
-      saveAddress({ ...editing, id: editing.id || `addr-${Date.now()}`, phone: editing.phone.trim(), pincode: editing.pincode.trim() });
-      setZoneMsg(z.serviceable ? '' : z.reason);
-      setEditing(null);
-      if (mode === 'select' && z.serviceable) router.back();
+      try {
+        const saved = await save.mutateAsync({ ...editing, phone: editing.phone.trim(), pincode: editing.pincode.trim() });
+        selectAddress(saved.id);
+        toast('Address saved');
+        setZoneMsg(z.serviceable ? '' : z.reason);
+        setEditing(null);
+        if (mode === 'select' && z.serviceable) router.back();
+      } catch (err) {
+        toast(err instanceof Error ? err.message : 'Could not save the address', 'error');
+      }
     };
     return (
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -78,7 +125,7 @@ export default function AddressScreen() {
             ))}
             <Chip label="Default" active={editing.isDefault} onPress={() => set('isDefault', !editing.isDefault)} />
           </View>
-          <GoldButton title="Save Address" onPress={save} />
+          <GoldButton title="Save Address" loading={save.isPending} onPress={submit} />
           {addresses.length > 0 && <OutlineButton title="Cancel" onPress={() => setEditing(null)} style={{ marginTop: 10 }} />}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -112,7 +159,7 @@ export default function AddressScreen() {
                 <Pressable onPress={() => setEditing(a)} hitSlop={8} accessibilityLabel="Edit address">
                   <Ionicons name="create-outline" size={18} color={colors.gold} />
                 </Pressable>
-                <Pressable onPress={() => deleteAddress(a.id)} hitSlop={8} accessibilityLabel="Delete address">
+                <Pressable onPress={() => void deleteAddress(a.id)} hitSlop={8} accessibilityLabel="Delete address">
                   <Ionicons name="trash-outline" size={18} color={colors.textDim} />
                 </Pressable>
               </View>

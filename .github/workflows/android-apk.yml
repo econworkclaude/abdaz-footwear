@@ -1,34 +1,83 @@
-# Builds an installable Android APK on every push to main (or on demand).
-# No Expo account needed. Download it from the run's "Artifacts" section.
-name: Android APK
+# Builds two installable Android APKs on every push to main (or on demand):
+#   ABDAZ (customer)  and  ABDAZ Admin
+# No Expo account needed. Get them from the "latest-apk" Release on GitHub (open it on your phone and tap the .apk).
+# To connect the real database, add repository secrets EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.
+name: Android APKs
 on:
   push:
     branches: [main]
   workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  apk:
+  checks:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/mobile
+    defaults: { run: { working-directory: apps/mobile } }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: apps/mobile/package-lock.json
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - uses: android-actions/setup-android@v3
+        with: { node-version: 22, cache: npm, cache-dependency-path: apps/mobile/package-lock.json }
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
-      - run: npx expo prebuild --platform android --no-install
-      - run: cd android && ./gradlew assembleRelease --no-daemon
+
+  apk:
+    needs: checks
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        variant: [customer, admin]
+    defaults: { run: { working-directory: apps/mobile } }
+    env:
+      APP_VARIANT: ${{ matrix.variant }}
+      EXPO_PUBLIC_APP_VARIANT: ${{ matrix.variant }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: apps/mobile/package-lock.json }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@v3
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ matrix.variant }}-${{ hashFiles('apps/mobile/package-lock.json') }}
+      - run: npm ci
+      - run: npx expo prebuild --platform android --no-install --clean
+      - name: Build release APK
+        run: cd android && ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+      - name: Name the APK
+        run: |
+          NAME=$([ "$APP_VARIANT" = admin ] && echo ABDAZ-Admin || echo ABDAZ)
+          MODE=$([ -n "$EXPO_PUBLIC_SUPABASE_URL" ] && echo live || echo demo)
+          cp android/app/build/outputs/apk/release/app-release.apk "../../$NAME-$MODE.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: abdaz-demo-apk
-          path: apps/mobile/android/app/build/outputs/apk/release/*.apk
+          name: apk-${{ matrix.variant }}
+          path: '*.apk'
+
+  release:
+    needs: apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-apk
+          name: Latest APKs (${{ github.sha }})
+          prerelease: true
+          make_latest: false
+          body: |
+            Test builds from commit ${{ github.sha }}.
+            On your Android phone: tap an .apk below, then allow "Install unknown apps" when asked.
+            ABDAZ = customer app, ABDAZ-Admin = store admin app. "demo" builds are not connected to the database.
+          files: '*.apk'
