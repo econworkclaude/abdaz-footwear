@@ -43,7 +43,6 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: apps/mobile/package-lock.json }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
-      - uses: android-actions/setup-android@v3
       - uses: actions/cache@v4
         with:
           path: |
