@@ -1,7 +1,7 @@
 // Bundles the web export into one self-contained HTML file (for a shareable phone-browser preview).
 const fs = require('fs');
 const path = require('path');
-const dist = path.join(__dirname, '..', 'dist');
+const dist = path.join(__dirname, '..', process.env.DIST || 'dist');
 const out = process.argv[2] || path.join(dist, 'preview.html');
 let html = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
 const src = html.match(/<script src="([^"]+)" defer><\/script>/)[1];
@@ -19,7 +19,7 @@ console.log('wrote', out, (html.length / 1e6).toFixed(2) + 'MB');
 
 // Artifact fragment (no html/head/body: the host wraps it).
 if (process.argv[3]) {
-  const frag = `<title>ABDAZ Footwear App</title>
+  const frag = `<title>${process.env.TITLE || 'ABDAZ Footwear App'}</title>
 <style>:root{color-scheme:dark}html,body{height:100%;background:#080B12;color:#fff}body{overflow:hidden}#root{display:flex;height:100%;flex:1}</style>
 <noscript>Please enable JavaScript to try the ABDAZ demo.</noscript>
 <div id="root"></div>
